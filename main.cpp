@@ -172,7 +172,7 @@ void secondScan(node*&L){
 	node *r, *p,*tail;
 	if (L->next != NULL) {			//非空链表
 		r = L->next;
-		p = tail = L;
+		tail = L;
 		while (tail->next != NULL) {		//tail指向链表尾节点
 			tail = tail->next;
 		}
@@ -180,7 +180,6 @@ void secondScan(node*&L){
 	else
 		return;
 	stack<St> st;
-	node a;
 	int level = 0, levelcnt = 0;		//嵌套层数
 	int pre = 0, post = 0;
 	while (r != NULL and r->nestedCnt==0) {	
@@ -192,15 +191,18 @@ void secondScan(node*&L){
 			m->level = level++;
 			st.push(*m);		//入栈
 		}	
-		else if (r->itemName == "}") {			
+		else if (r->itemName == "}") {		
+			p = L;
 			St c;		
 			c = st.top();		//返回栈顶元素，即与"}"对应的"{"
 			st.pop();			//出栈
 			St *m = &c;	
 			if (m->level > 0) {			//说明有嵌套	
+
 				pre = m->ln;			//嵌套开始所在行
 				post = r->ln;			//嵌套结束所在行
 				levelcnt++;
+				r = r->next;
 				int cnt = 0;			//	当cnt置1时，表示为嵌套结构，将其置入表后
 				while (p->next != NULL) {
 					if (p->next->ln == pre)
@@ -208,20 +210,27 @@ void secondScan(node*&L){
 					else if (p->next->ln == post+1)
 						break;
 					if (cnt == 1) {
-						node *r = p->next;
-						r->nestedCnt = levelcnt;
-						p->next = r->next;
-						r->next = tail->next;				//将其插入到链表后部
-						tail->next = r;
-						tail = r;
+						
+						node *b = p->next;
+						b->nestedCnt = levelcnt;
+						p->next = b->next;
+						b->next = tail->next;				//将其插入到链表后部
+						tail->next = b;
+						tail = b;
 					}
-					else
+					else {
 						p = p->next;
+					}
+						
 				}
+				level--;		//处理完一层
+				continue;
 			}
+			
 		}
 		r = r->next;
 	}	
+	cout << "levelcnt  " << levelcnt << endl;
 }
 
 int main() {
