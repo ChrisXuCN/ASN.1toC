@@ -170,6 +170,8 @@ node* firstScan() {
 ****************************/
 void secondScan(node*&L){
 	node *r, *p,*tail;
+	node *nested = new node;			//此节点用来标记嵌套结构
+	nested->next = NULL;
 	if (L->next != NULL) {			//非空链表
 		r = L->next;
 		tail = L;
@@ -178,14 +180,15 @@ void secondScan(node*&L){
 		}
 	}
 	else
-		return;
-	stack<St> st;
+		return;			//若L为空链表直接返回
+	stack<St> st;		
 	int level = 0, levelcnt = 0;		//嵌套层数
 	int pre = 0, post = 0;
 	while (r != NULL and r->nestedCnt==0) {	
 		if (r->itemName == "{") {
 			St c;
 			St *m=&c;
+			//St *m = new St;
 			m->s = r->itemName;
 			m->ln = r->ln;
 			m->level = level++;
@@ -198,21 +201,36 @@ void secondScan(node*&L){
 			st.pop();			//出栈
 			St *m = &c;	
 			if (m->level > 0) {			//说明有嵌套	
-
 				pre = m->ln;			//嵌套开始所在行
 				post = r->ln;			//嵌套结束所在行
-				levelcnt++;
+				levelcnt++;				
 				r = r->next;
 				int cnt = 0;			//	当cnt置1时，表示为嵌套结构，将其置入表后
-				while (p->next != NULL) {
-					if (p->next->ln == pre)
+				node*q = NULL, *t = new node;
+				while (p->next != NULL) {		//从表头开始扫描节点  
+					
+					if (p->next->ln == pre) {
 						cnt = 1;
-					else if (p->next->ln == post+1)
+						q = p;
+						//cout << q->itemName << endl;
+					}			
+					else if (p->next->ln == post + 1) {
+						t->itemName = "Nested";
+						t->id = 10;
+						//cout << q->moduleIn << endl;
+						t->moduleIn = q->moduleIn;
+						t->val = 2;
+						t->ln = pre;
+						t->nestedCnt = levelcnt;
+						t->next = q->next;
+						q->next = t;
 						break;
-					if (cnt == 1) {
+					}
 						
+					if (cnt == 1) {
 						node *b = p->next;
-						b->nestedCnt = levelcnt;
+						if(b->nestedCnt==0)
+							b->nestedCnt = levelcnt;
 						p->next = b->next;
 						b->next = tail->next;				//将其插入到链表后部
 						tail->next = b;
@@ -230,11 +248,10 @@ void secondScan(node*&L){
 		}
 		r = r->next;
 	}	
-	cout << "levelcnt  " << levelcnt << endl;
 }
 
 int main() {
-	cout << "第一遍扫描效果" << endl;
+	cout << "第二遍扫描效果" << endl;
 	cout << "——————————————————" << endl;
 	cout << "itemName    " << "id " << "ln " << "mIn " << "val  " <<"nestedCnt"<< endl;
 	node*L = firstScan();
