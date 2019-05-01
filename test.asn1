@@ -1,20 +1,22 @@
 ModuleName DEFINITIONS ::=
 BEGIN
-Age ::= INTEGER
-Number ::= INTEGER
-Scores ::= INTEGER
-From ::= SEQUENCR {
+
+
+From ::= SEQUENCE {
 	age Age,
 	number Number,
-	gorce SEQUENCR OF {
+	gorce SEQUENCE OF {
 		math Scores,
 		engligh Scores,
 		chinese Scores,
-		normalGrades SEQUENCR OF {
+		normalGrades SEQUENCE OF {
 			math Scores,
 			engligh Scores,
 			chinese Scores
 		}
+		Scores ::= INTEGER
+		Age ::= INTEGER
+		Number ::= INTEGER
 	}
 }
 END

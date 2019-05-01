@@ -10,7 +10,7 @@ struct node {
 	int id;				//标识此语法项的类型
 	string itemName;	//名
 	int nestedCnt;		//嵌套标志，同一嵌套结构中的所有语法项此项相同
-	int val;			//具体指明为变量或类型或新定义的类型名 0 变量  1  类型 2 类型名 3 "}" 或 "{"
+	int val;			//0表示类型定义，1表示类型使用
 	int ln;				//指出该语法项所在行
 	bool moduleIn;		
 	struct node *next;	//指向下一个节点
@@ -108,7 +108,7 @@ node* firstScan() {
 			int i = checkType(ai);
 			if (i > -1) {		//表明该字符串是一个类型名或者模板名
 				node* p = new node;
-				p->val = 1;
+				p->val = -1;
 				p->id = i;
 				p->itemName = ai;
 				p->nestedCnt = 0;
@@ -123,7 +123,7 @@ node* firstScan() {
 			else {
 				if (isupper(ai[0])) {	//表示为定义的类型名
 					node* p = new node;
-					p->val = 2;
+					p->val = -1;
 					p->id = -1;
 					p->itemName = ai;
 					p->nestedCnt = 0;
@@ -135,7 +135,7 @@ node* firstScan() {
 				}
 				else if (islower(ai[0])) {	//表示为定义的变量名
 					node* p = new node;
-					p->val = 0;
+					p->val = -1;
 					p->id = -1;
 					p->itemName = ai;
 					p->nestedCnt = 0;
@@ -147,7 +147,7 @@ node* firstScan() {
 				}
 				else if (ai == "{" || ai == "}") {
 					node* p = new node;
-					p->val = 3;
+					p->val = -1;
 					p->id = -1;
 					p->itemName = ai;
 					p->nestedCnt = 0;
@@ -219,7 +219,7 @@ void secondScan(node*&L){
 						t->id = 10;
 						//cout << q->moduleIn << endl;
 						t->moduleIn = q->moduleIn;
-						t->val = 2;
+						t->val = -1;
 						t->ln = pre;
 						t->nestedCnt = levelcnt;
 						t->next = q->next;
@@ -249,13 +249,58 @@ void secondScan(node*&L){
 		r = r->next;
 	}	
 }
+/***************************
+*第三遍扫描
+*将用户自定义的标识符添加到
+*链表头部
+***************************/
+void thridScan(node*&L) {
+	node *q, *p,*n;
+	string Name;
+	if (L->next != NULL)
+		p = L->next;
+	else
+		return;
+	while (p->next->ln == 1)
+		p = p->next;
+	q = p;				//插入到q节点的后面
+	n = q;
+	int cnt = 0;	
+	while (p != NULL) {
+		Name = p->itemName;
+		if (checkType(Name) >= 0 and checkType(Name) <= 4 ) {			//类型
+			//cout << Name << endl;
+			cnt = p->ln;
+			//cout << cnt << endl;
+			while (n->next->ln != cnt) {
+				n = n->next;
+			}
+			//cout << n->next->itemName << endl;
+			if (isupper(n->next->itemName[0])) {			//新定义的类型名
+				node*r = n->next;
+				r->val = 0;
+				r->nestedCnt = 0;
+				r->next->val = 0;
+				r->next->nestedCnt = 0;
+				n->next = r->next->next;
+				r->next->next = q->next;
+				q->next = r;
+				q = r->next;
+			}
+		}
+		p = p->next;
+	}
+}
+
 
 int main() {
+	node *ph[51], *pt[51];
 	cout << "第二遍扫描效果" << endl;
 	cout << "——————————————————" << endl;
 	cout << "itemName    " << "id " << "ln " << "mIn " << "val  " <<"nestedCnt"<< endl;
 	node*L = firstScan();
 	secondScan(L);
+	thridScan(L);
 	node*r = L->next;
 	while (r != NULL) {
 		cout << setw(10) << r->itemName << "  " << r->id << "  " << r->ln << "  " << r->moduleIn << "  " << r->val << "   " << r->nestedCnt << endl;
