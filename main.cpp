@@ -13,6 +13,7 @@ struct node {
 	int val;			//0表示类型定义，1表示类型使用
 	int ln;				//指出该语法项所在行
 	bool moduleIn;		
+	bool read;			//0表示未转换C,1表示已转换C
 	struct node *next;	//指向下一个节点
 };
 //堆栈的数据节点
@@ -72,10 +73,15 @@ void split(const string &str, vector<string> &vec) {
 	vec.push_back(stmp);
 }
 
+void del(string &str, const char c) {
+	int len = str.length();
+	if (len >= 1 and str[len - 1] == ',')
+		str.erase(len - 1, 1);
+}
 
 //检查类型
 int checkType(const string & s) {
-	vector<string> type = { "INTEGER","REAL","ENUMERATED","BIT STRING","OCTET STRING","NULL","CHOCIE",
+	vector<string> type = { "INTEGER","BOOLEAN","ENUMERATED","BIT STRING","OCTET STRING","NULL","CHOCIE",
 							"SEQUENCE","SEQUENCE OF" ,"DEFINITIONS" };
 	for (int i = 0; i < 10; i++) {
 		if (s == type[i])
@@ -83,7 +89,10 @@ int checkType(const string & s) {
 	}
 	return -1;
 }
-
+/***************************
+*
+*第一遍扫描，建立动态链表
+***************************/
 node* firstScan() {
 	node* L = new node;//头结点
 	node* r = L;
@@ -104,7 +113,21 @@ node* firstScan() {
 		str = buffer;
 		vector<string> evc;
 		split(str, evc);
+		int index = 0;
 		for (auto ai : evc) {
+			del(ai, ',');
+			index++;
+			if (ai == "BIT" or ai == "OCTET") {
+				ai += " STRING";
+			}
+			else if (ai == "SEQUENCE") {
+				if (evc[index] == "OF") {
+					ai += " OF";
+				}
+			}
+			else if (ai == "STRING," or ai == "STRING" or ai == "OF") {
+				continue;
+			}
 			int i = checkType(ai);
 			if (i > -1) {		//表明该字符串是一个类型名或者模板名
 				node* p = new node;
@@ -114,21 +137,39 @@ node* firstScan() {
 				p->nestedCnt = 0;
 				p->ln = ln;
 				p->moduleIn = moduleIn;
+				p->read = false;
 				p->next = NULL;
 				r->next = p;			//尾插法  
 				r = p;
 			}
-			else if (ai == "BEGIN")	moduleIn = true;//	表示后面的语法项都在模板内部
-			else if (ai == "END") moduleIn = false;// 表示模板结束
+			else if (ai == "BEGIN") {
+				moduleIn = true;//	表示后面的语法项都在模板内部
+			}
+			else if (ai == "END") {
+				moduleIn = false;// 表示模板结束
+				node* p = new node;
+				p->val = -1;
+				p->id = -1;
+				p->itemName = ai;
+				p->nestedCnt = 0;
+				p->ln = ln;
+				p->moduleIn = moduleIn;
+				p->read = false;
+				p->next = NULL;
+				r->next = p;			//尾插法  
+				r = p;
+			}
 			else {
 				if (isupper(ai[0])) {	//表示为定义的类型名
 					node* p = new node;
 					p->val = -1;
-					p->id = -1;
+					p->id = -2;
+					del(ai, ',');
 					p->itemName = ai;
 					p->nestedCnt = 0;
 					p->ln = ln;
 					p->moduleIn = moduleIn;
+					p->read = false;
 					p->next = NULL;
 					r->next = p;		//尾插法
 					r = p;
@@ -141,6 +182,7 @@ node* firstScan() {
 					p->nestedCnt = 0;
 					p->ln = ln;
 					p->moduleIn = moduleIn;
+					p->read = false;
 					p->next = NULL;
 					r->next = p;		//尾插法
 					r = p;
@@ -153,6 +195,7 @@ node* firstScan() {
 					p->nestedCnt = 0;
 					p->ln = ln;
 					p->moduleIn = moduleIn;
+					p->read = false;
 					p->next = NULL;
 					r->next = p;		//尾插法
 					r = p;
@@ -162,11 +205,10 @@ node* firstScan() {
 	}
 	return L;
 }
-
 /***************************
 *
 *第二遍扫描，实现去嵌套
-*2019-04-23 问题：无法处理多层嵌套，当出现多层嵌套时，只能处理最里层
+*
 ****************************/
 void secondScan(node*&L){
 	node *r, *p,*tail;
@@ -217,6 +259,7 @@ void secondScan(node*&L){
 					else if (p->next->ln == post + 1) {
 						t->itemName = "Nested";
 						t->id = 10;
+						t->read = false;
 						//cout << q->moduleIn << endl;
 						t->moduleIn = q->moduleIn;
 						t->val = -1;
@@ -275,8 +318,9 @@ void thridScan(node*&L) {
 			while (n->next->ln != cnt) {
 				n = n->next;
 			}
-			//cout << n->next->itemName << endl;
+			
 			if (isupper(n->next->itemName[0])) {			//新定义的类型名
+				//cout << n->next->itemName << endl;
 				node*r = n->next;
 				r->val = 0;
 				r->nestedCnt = 0;
@@ -287,23 +331,177 @@ void thridScan(node*&L) {
 				q->next = r;
 				q = r->next;
 			}
+			n = q;
 		}
 		p = p->next;
 	}
 }
 
+int write2file(string message, fstream &file) {
+	if (!file) {
+		cout << "file error!" << endl;
+		return 0;
+	}
+	else {
+		file << message << endl;
+		return 1;
+	}
+}
+
+/**************************
+*第四遍扫描
+*将动态链表内容转为C语言的数据结构
+**************************/
+node* fourScan(node*&L, node*&L1,fstream &file, int level) {
+	node *p,*q;
+	if (L1->next != NULL)
+		p = L1->next;
+	else
+		return NULL;
+	string sj = "";
+	for (int i = 0; i < level; i++) {
+		sj += "	";
+	}
+	//cout << p->next->id << endl;
+	while (p->next != NULL and p->itemName!="END") {
+		if (p->next->id == 0 and p->next->read == 0) {		//整型
+			if (p->id == -2) {
+				string message = sj + "typedef	int	" + p->itemName + ";";
+				if (write2file(message, file)) {
+					p->read = 1;
+					p->next->read = 1;
+				}	
+			}
+			else if (p->id == -1) {
+				string message = sj + "int	" + p->itemName + ";";
+				if (write2file(message, file)) {
+					p->read = 1;
+					p->next->read = 1;
+				}
+			}
+		}
+		else if (p->next->id == 1 and p->next->read == 0) {		//布尔型
+			if (p->id == -2) {
+				string message = sj + "typedef bool	" + p->itemName+";";
+				if (write2file(message, file)) {
+					p->read = 1;
+					p->next->read = 1;
+				}
+			}
+			else if (p->id == -1) {
+				string message = sj + "bool	" + p->itemName + ";";
+				if (write2file(message, file)) {
+					p->read = 1;
+					p->next->read = 1;
+				}
+			}
+		}
+		else if (p->next->id == 3 and p->next->read == 0) {			//比特串
+			if (p->id == -2) {
+				string message = sj + "typedef	char	*" + p->itemName + "Bit;";
+				if (write2file(message, file))
+					p->read = 1;
+			}
+			else if (p->id == -1) {
+				string message = sj + "char	*" + p->itemName + "Bit;";
+				if (write2file(message, file))
+					p->read = 1;
+			}
+		}
+		else if (p->next->id == 4 and p->next->read == 0) {			//字节串
+			if (p->id == -2) {										//新定义的类型名
+				string message = sj + "typedef	char	*" + p->itemName + "Octet;";
+				if (write2file(message, file))
+					p->read = 1;
+			}
+			else if (p->id == -1) {									//使用类型定义变量
+				string message = sj + "char	*" + p->itemName + "Octet;";
+				if (write2file(message, file))
+					p->read = 1;
+			}
+
+		}
+		else if (p->next->id == -2 and p->id == -1 and p->next->read == 0) {			//新定义的类型名
+
+			string message = sj + p->next->itemName + "	" + p->itemName + ";";
+			if (write2file(message, file)) {
+				p->next->read = 1;
+				p->read = 1;
+			}
+				
+		}
+		else if (p->next->id == 10 and p->next->read == 0) {			//嵌套结构
+			//cout << "sdfasdf" << endl;
+			int nested = p->next->nestedCnt;
+			//cout << nested << endl;
+			node *q = L;
+			while (q->next->nestedCnt != nested or q->next->id == 10)
+				q = q->next;
+			//cout << q->next->itemName << endl;
+
+			node *r = fourScan(L, q, file, level);
+
+		}
+		else if (p->next->id == 7 and p->next->read == 0) {			//结构体
+			string message = sj + "typedef	struct	" + p->itemName + p->next->next->itemName;
+			if (write2file(message, file)) {
+				p->next->read = 1;
+				p->read = 1;
+			}
+			//cout << p->next->next->itemName << endl;
+			node *r = fourScan(L, p->next->next, file, level+1);
+			
+		}
+		else if (p->next->itemName == "}" and p->next->read == 0) {
+			string sj = "";
+			//cout << level << endl;
+			for (int i = 0; i < level-1; i++) {
+				sj += "	";
+			}
+			string message = sj + p->next->itemName+";";
+			if (write2file(message, file)) {
+				p->next->read = 1;
+			}
+			return p->next->next;
+		}
+		p = p->next;
+	}
+	return NULL;
+}
+
+
+
 
 int main() {
-	node *ph[51], *pt[51];
-	cout << "第二遍扫描效果" << endl;
+	node *p,*q;
+	cout << "第三遍扫描效果" << endl;
 	cout << "——————————————————" << endl;
-	cout << "itemName    " << "id " << "ln " << "mIn " << "val  " <<"nestedCnt"<< endl;
+	cout << "itemName    " << "id " << "ln " << "mIn " << "val  " <<"nestedCnt"<< "   read;"<<endl;
 	node*L = firstScan();
 	secondScan(L);
-	thridScan(L);
+	//thridScan(L);
+	p = L->next;
+	string fileName;
+	fstream file;
+	if (p->next->id == 9) {		//表明为模块定义
+		fileName = p->itemName;
+		fileName += ".c";
+		ofstream fileOut(fileName, ios::out);
+		if (!fileOut) {
+			cout << "fileout error!" << endl;
+		}
+		else {
+			fileOut.close();
+
+		}
+		file.open(fileName, ios::out);
+	}
+	q = fourScan(L, L, file, 0);
+	//file << "}" << endl;
+	file.close();
 	node*r = L->next;
 	while (r != NULL) {
-		cout << setw(10) << r->itemName << "  " << r->id << "  " << r->ln << "  " << r->moduleIn << "  " << r->val << "   " << r->nestedCnt << endl;
+		cout << setw(10) << r->itemName << "  " << r->id << "  " << r->ln << "  " << r->moduleIn << "  " << r->val << "   " << r->nestedCnt <<"          "<<r->read<< endl;
 		r = r->next;
 	}
 }

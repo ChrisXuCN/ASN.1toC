@@ -1,22 +1,20 @@
 ModuleName DEFINITIONS ::=
 BEGIN
-
-
-From ::= SEQUENCE {
-	age Age,
-	number Number,
-	gorce SEQUENCE OF {
-		math Scores,
-		engligh Scores,
-		chinese Scores,
-		normalGrades SEQUENCE OF {
-			math Scores,
-			engligh Scores,
-			chinese Scores
-		}
-		Scores ::= INTEGER
-		Age ::= INTEGER
-		Number ::= INTEGER
-	}
+Form ::= SEQUENCE {
+	age	INTEGER,
+	men BOOLEAN,
+	name OCTET STRING,
+	math Scores,
+	engligh Scores,
+	chinese Scores
 }
+form Form ::= {
+	age		23,
+	men		TRUE,
+	name	"xty",
+	math	66,
+	english 43,
+	chinese	76
+}
+Scores ::= INTEGER
 END
